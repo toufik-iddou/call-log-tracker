@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { verifyToken } from '@/lib/auth';
 
 export async function PUT(
-    request: Request,
-    { params }: { params: { id: string } }
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const authHeader = request.headers.get('Authorization');
@@ -19,7 +19,7 @@ export async function PUT(
             return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
         }
 
-        const id = params.id;
+        const { id } = await params;
         const data = await request.json();
         const { username } = data;
 
