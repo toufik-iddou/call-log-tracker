@@ -13,8 +13,8 @@ export async function POST(request: Request) {
         const token = authHeader.split(' ')[1];
         const decoded = verifyToken(token);
 
-        if (!decoded) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+        if (!decoded || decoded.role !== 'ADMIN') {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
         const data = await request.json();
@@ -71,8 +71,8 @@ export async function GET(request: Request) {
         const token = authHeader.split(' ')[1];
         const decoded = verifyToken(token);
 
-        if (!decoded) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+        if (!decoded || decoded.role !== 'ADMIN') {
+            return NextResponse.json({ error: 'Forbidden: Admins only' }, { status: 403 });
         }
 
         const agents = await prisma.user.findMany({

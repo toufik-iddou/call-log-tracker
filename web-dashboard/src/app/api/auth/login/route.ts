@@ -25,13 +25,14 @@ export async function POST(request: Request) {
             );
         }
 
-        const token = signToken(user.id);
+        const token = signToken(user.id, user.role);
 
         return NextResponse.json({
             success: true,
             token,
             agentId: user.id,
             username: user.username,
+            role: user.role,
         });
     } catch (error) {
         console.error('Login error:', error);

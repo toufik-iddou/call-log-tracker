@@ -15,8 +15,8 @@ export async function PUT(
         const token = authHeader.split(' ')[1];
         const decoded = verifyToken(token);
 
-        if (!decoded) {
-            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+        if (!decoded || decoded.role !== 'ADMIN') {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
         const { id } = await params;

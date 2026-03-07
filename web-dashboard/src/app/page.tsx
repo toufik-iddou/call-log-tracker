@@ -6,11 +6,17 @@ import CallActivityGraph from '../components/CallActivityGraph';
 
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
+  const [role, setRole] = useState<string>('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Pagination State
+  const [limit, setLimit] = useState<number>(10);
+  const [page, setPage] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number>(1);
 
   // Filters State
   const [selectedAgent, setSelectedAgent] = useState<string>('');
@@ -49,18 +55,20 @@ export default function Home() {
 
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
+    const savedRole = localStorage.getItem('role');
     if (savedToken) {
       setToken(savedToken);
-      fetchLogs(savedToken);
+      if (savedRole) setRole(savedRole);
+      fetchLogs(savedToken, limit, page);
 
       // Instantly pull new logs every 3 seconds
       const interval = setInterval(() => {
-        fetchLogs(savedToken);
+        fetchLogs(savedToken, limit, page);
       }, 3000);
 
       return () => clearInterval(interval);
     }
-  }, []);
+  }, [limit, page]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,8 +87,10 @@ export default function Home() {
       const data = await res.json();
       if (data.success) {
         localStorage.setItem('token', data.token);
+        localStorage.setItem('role', data.role);
         setToken(data.token);
-        fetchLogs(data.token);
+        setRole(data.role);
+        fetchLogs(data.token, limit, page);
       } else {
         setLoginError(data.error || 'Login failed');
       }
@@ -91,15 +101,18 @@ export default function Home() {
     }
   };
 
-  const fetchLogs = async (authToken: string) => {
+  const fetchLogs = async (authToken: string, currentLimit: number, currentPage: number) => {
     try {
-      const res = await fetch('/api/logs', {
+      const res = await fetch(`/api/logs?limit=${currentLimit}&page=${currentPage}&t=${Date.now()}`, {
+        cache: 'no-store',
         headers: {
-          'Authorization': `Bearer ${authToken}`
+          'Authorization': `Bearer ${authToken}`,
+          'Cache-Control': 'no-store'
         }
       });
       const data = await res.json();
       if (data.success) {
+        setTotalPages(data.totalPages || 1);
         setLogs(prevLogs => {
           // Check if the IDs of the returned logs perfectly match the existing logs
           // Sort them first to avoid non-deterministic database ordering forcing a false update
@@ -229,7 +242,9 @@ export default function Home() {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('role');
     setToken(null);
+    setRole('');
     setLogs([]);
   };
 
@@ -299,18 +314,22 @@ export default function Home() {
               <span className="font-bold text-xl text-indigo-500">Call Center Monitor</span>
             </div>
             <div>
-              <button
-                onClick={handleOpenRenameModal}
-                className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-2 mr-3 rounded-md text-sm font-medium transition-colors border border-gray-700"
-              >
-                Rename Agent
-              </button>
-              <button
-                onClick={() => setIsAddingAgent(true)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 mr-4 rounded-md text-sm font-medium transition-colors"
-              >
-                Add Agent
-              </button>
+              {role === 'ADMIN' && (
+                <>
+                  <button
+                    onClick={handleOpenRenameModal}
+                    className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-2 mr-3 rounded-md text-sm font-medium transition-colors border border-gray-700"
+                  >
+                    Rename Agent
+                  </button>
+                  <button
+                    onClick={() => setIsAddingAgent(true)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 mr-4 rounded-md text-sm font-medium transition-colors"
+                  >
+                    Add Agent
+                  </button>
+                </>
+              )}
               <button
                 onClick={handleLogout}
                 className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors"
@@ -327,7 +346,7 @@ export default function Home() {
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-semibold">Recent Call Logs</h1>
             <button
-              onClick={() => fetchLogs(token)}
+              onClick={() => fetchLogs(token, limit, page)}
               className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm transition-colors border border-gray-700"
             >
               Refresh
@@ -335,29 +354,31 @@ export default function Home() {
           </div>
 
           {/* Filters Area */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className={`grid grid-cols-1 ${role === 'ADMIN' ? 'md:grid-cols-2' : ''} gap-6 mb-6`}>
             {/* Agent Filter */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 shadow-sm">
-              <label className="flex items-center text-sm font-medium text-amber-500 mb-2">
-                <span className="mr-2">📁</span> Select File to Analyze:
-              </label>
-              <select
-                value={selectedAgent}
-                onChange={(e) => setSelectedAgent(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-md focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 appearance-none"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 1rem center',
-                  backgroundSize: '1em'
-                }}
-              >
-                <option value="">All Agents</option>
-                {uniqueAgents.map(agent => (
-                  <option key={agent} value={agent}>{agent}</option>
-                ))}
-              </select>
-            </div>
+            {role === 'ADMIN' && (
+              <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 shadow-sm">
+                <label className="flex items-center text-sm font-medium text-amber-500 mb-2">
+                  <span className="mr-2">📁</span> Select Agent to Analyze:
+                </label>
+                <select
+                  value={selectedAgent}
+                  onChange={(e) => setSelectedAgent(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-md focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 appearance-none"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 1rem center',
+                    backgroundSize: '1em'
+                  }}
+                >
+                  <option value="">All Agents</option>
+                  {uniqueAgents.map(agent => (
+                    <option key={agent} value={agent}>{agent}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Date Range Filter */}
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 shadow-sm">
@@ -381,6 +402,48 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          {/* Pagination Controls */}
+          {filteredLogs.length > 0 && (
+            <div className="flex justify-between items-center bg-gray-900 border border-gray-800 rounded-lg p-4 mb-6 shadow-sm">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-400">Show:</span>
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    setLimit(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="bg-gray-800 border border-gray-700 text-white text-sm rounded-md focus:ring-indigo-500 focus:border-indigo-500 p-1.5"
+                >
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                </select>
+                <span className="text-sm text-gray-400">entries</span>
+              </div>
+
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-3 py-1 bg-gray-800 text-gray-300 rounded-md disabled:opacity-50 hover:bg-gray-700 transition-colors"
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-gray-400">
+                  Page {page} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="px-3 py-1 bg-gray-800 text-gray-300 rounded-md disabled:opacity-50 hover:bg-gray-700 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Recent Call Logs Table */}
           <div className="bg-gray-900 shadow-xl rounded-lg overflow-hidden border border-gray-800 mb-6">

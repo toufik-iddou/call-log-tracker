@@ -14,6 +14,7 @@ model User {
   id        String    @id @default(uuid())
   username  String    @unique
   password  String
+  role      String    @default("AGENT") // Can be "ADMIN" or "AGENT"
   createdAt DateTime  @default(now())
   callLogs  CallLog[]
 }

@@ -5,20 +5,20 @@ import { verifyToken } from '@/lib/auth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-function getUserIdFromRequest(request: Request) {
+function getAuthPayloadFromRequest(request: Request) {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
     const token = authHeader.split(' ')[1];
-    const payload = verifyToken(token);
-    return payload ? payload.userId : null;
+    return verifyToken(token);
 }
 
 export async function POST(request: Request) {
     try {
-        const userId = getUserIdFromRequest(request);
-        if (!userId) {
+        const payload = getAuthPayloadFromRequest(request);
+        if (!payload) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
+        const userId = payload.userId;
 
         const data = await request.json();
         console.log("---- RECEIVED /api/logs POST ----");
@@ -52,8 +52,25 @@ export async function POST(request: Request) {
         }
 
         if (validLogsData.length === 1) {
+            const singleLog = validLogsData[0];
+            const existingLog = await prisma.callLog.findFirst({
+                where: {
+                    phoneNumber: singleLog.phoneNumber,
+                    type: singleLog.type,
+                    agentId: singleLog.agentId,
+                    timestamp: {
+                        gte: new Date(singleLog.timestamp.getTime() - 10000),
+                        lte: new Date(singleLog.timestamp.getTime() + 10000)
+                    }
+                }
+            });
+
+            if (existingLog) {
+                return NextResponse.json({ success: true, log: existingLog, duplicate: true }, { status: 200 });
+            }
+
             const log = await prisma.callLog.create({
-                data: validLogsData[0],
+                data: singleLog,
                 include: {
                     agent: {
                         select: { username: true }
@@ -62,10 +79,33 @@ export async function POST(request: Request) {
             });
             return NextResponse.json({ success: true, log }, { status: 201 });
         } else {
-            const result = await prisma.callLog.createMany({
-                data: validLogsData,
-            });
-            return NextResponse.json({ success: true, count: result.count, batch: true }, { status: 201 });
+            // Filter duplicates from batch
+            const uniqueLogsToInsert = [];
+            for (const logItem of validLogsData) {
+                const existingLog = await prisma.callLog.findFirst({
+                    where: {
+                        phoneNumber: logItem.phoneNumber,
+                        type: logItem.type,
+                        agentId: logItem.agentId,
+                        timestamp: {
+                            gte: new Date(logItem.timestamp.getTime() - 10000),
+                            lte: new Date(logItem.timestamp.getTime() + 10000)
+                        }
+                    }
+                });
+                if (!existingLog) {
+                    uniqueLogsToInsert.push(logItem);
+                }
+            }
+
+            if (uniqueLogsToInsert.length > 0) {
+                const result = await prisma.callLog.createMany({
+                    data: uniqueLogsToInsert,
+                });
+                return NextResponse.json({ success: true, count: result.count, batch: true }, { status: 201 });
+            } else {
+                return NextResponse.json({ success: true, count: 0, batch: true, duplicates: validLogsData.length }, { status: 200 });
+            }
         }
     } catch (error) {
         console.error('Failed to create call log:', error);
@@ -79,21 +119,45 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
-        const limit = parseInt(searchParams.get('limit') || '100', 10);
-        const agentId = searchParams.get('agentId');
+        const page = parseInt(searchParams.get('page') || '1', 10);
+        const limit = parseInt(searchParams.get('limit') || '10', 10);
+        let agentId = searchParams.get('agentId');
 
-        const logs = await prisma.callLog.findMany({
-            where: agentId ? { agentId } : undefined,
-            orderBy: { timestamp: 'desc' },
-            take: limit,
-            include: {
-                agent: {
-                    select: { username: true }
+        const payload = getAuthPayloadFromRequest(request);
+        if (!payload) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        if (payload.role !== 'ADMIN') {
+            // Force agents to only view their own logs
+            agentId = payload.userId;
+        }
+
+        const skip = (page - 1) * limit;
+        const whereClause = agentId ? { agentId } : undefined;
+
+        const [logs, totalLogs] = await Promise.all([
+            prisma.callLog.findMany({
+                where: whereClause,
+                orderBy: { timestamp: 'desc' },
+                skip,
+                take: limit,
+                include: {
+                    agent: {
+                        select: { username: true }
+                    }
                 }
-            }
-        });
+            }),
+            prisma.callLog.count({ where: whereClause })
+        ]);
 
-        return NextResponse.json({ success: true, logs });
+        const totalPages = Math.max(1, Math.ceil(totalLogs / limit));
+
+        const response = NextResponse.json({ success: true, logs, totalLogs, totalPages, page, limit });
+        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('Expires', '0');
+        return response;
     } catch (error) {
         console.error('Failed to fetch call logs:', error);
         return NextResponse.json(

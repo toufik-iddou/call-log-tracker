@@ -1,7 +1,12 @@
-import { PrismaClient } from '@prisma/client';
-import { signToken } from '../src/lib/auth';
+const { PrismaClient } = require('@prisma/client');
+const jwt = require('jsonwebtoken');
 
 const prisma = new PrismaClient();
+
+function signToken(userId, role) {
+    const secret = process.env.JWT_SECRET || 'super_secret_jwt_key_change_me_in_prod';
+    return jwt.sign({ userId, role }, secret, { expiresIn: '30d' });
+}
 
 async function main() {
     try {
@@ -21,16 +26,10 @@ async function main() {
                 timestamp: new Date(Date.now() - 1000000).toISOString()
             },
             {
-                phoneNumber: '+0987654321',
-                type: 'MISSED',
-                duration: 0,
-                timestamp: new Date(Date.now() - 500000).toISOString()
-            },
-            {
-                phoneNumber: '+1122334455',
-                type: 'INCOMING',
-                duration: 120,
-                timestamp: new Date().toISOString()
+                phoneNumber: '+1234567890',
+                type: 'OUTGOING',
+                duration: 45,
+                timestamp: new Date(Date.now() - 1000000).toISOString()
             }
         ];
 

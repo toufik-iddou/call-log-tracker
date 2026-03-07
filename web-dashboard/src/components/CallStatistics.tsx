@@ -15,6 +15,8 @@ export default function CallStatistics({ logs }: CallStatisticsProps) {
         };
 
         const uniqueDaysSet = new Set<string>();
+        let firstCallTimestamp: number | null = null;
+        let lastCallTimestamp: number | null = null;
 
         logs.forEach(log => {
             // Aggregate Totals
@@ -28,6 +30,20 @@ export default function CallStatistics({ logs }: CallStatisticsProps) {
             if (typeStats[log.type as keyof typeof typeStats]) {
                 typeStats[log.type as keyof typeof typeStats].count += 1;
                 typeStats[log.type as keyof typeof typeStats].duration += log.duration;
+            }
+
+            // Track First and Last Call in the 07:00 to 22:00 window (07:00:00 - 21:59:59)
+            const logDateObj = new Date(log.timestamp);
+            const hour = logDateObj.getHours();
+
+            if (hour >= 7 && hour < 22) {
+                const ts = logDateObj.getTime();
+                if (firstCallTimestamp === null || ts < firstCallTimestamp) {
+                    firstCallTimestamp = ts;
+                }
+                if (lastCallTimestamp === null || ts > lastCallTimestamp) {
+                    lastCallTimestamp = ts;
+                }
             }
         });
 
@@ -53,11 +69,18 @@ export default function CallStatistics({ logs }: CallStatisticsProps) {
         const missedAvg = typeStats.MISSED.count > 0 ? Math.floor(typeStats.MISSED.duration / typeStats.MISSED.count) : 0;
         const outgoingAvg = typeStats.OUTGOING.count > 0 ? Math.floor(typeStats.OUTGOING.duration / typeStats.OUTGOING.count) : 0;
 
+        const formatTimeOnly = (ts: number | null) => {
+            if (!ts) return 'N/A';
+            return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        };
+
         return {
             totalCalls,
             totalDurationText: formatDuration(totalDurationSeconds),
             avgDurationText: formatDuration(avgDurationSeconds),
             noCallTimeText: formatDuration(noCallTimeSeconds),
+            firstCallText: formatTimeOnly(firstCallTimestamp),
+            lastCallText: formatTimeOnly(lastCallTimestamp),
             typeData: [
                 {
                     type: 'INCOMING',
@@ -129,7 +152,7 @@ export default function CallStatistics({ logs }: CallStatisticsProps) {
                 {/* Total Across All Types Cards */}
                 <div>
                     <h3 className="text-sm font-semibold text-gray-200 mb-4">Total Across All Types</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
                         {/* Total Calls */}
                         <div>
@@ -172,6 +195,28 @@ export default function CallStatistics({ logs }: CallStatisticsProps) {
                             </div>
                             <div className="text-3xl text-white font-medium font-mono">
                                 {stats.noCallTimeText}
+                            </div>
+                        </div>
+
+                        {/* First Call (7-22) */}
+                        <div>
+                            <div className="text-xs text-gray-400 mb-1 flex items-center space-x-1">
+                                <span className="text-green-500">🌅</span>
+                                <span>First Call (7h-22h)</span>
+                            </div>
+                            <div className="text-3xl text-white font-medium font-mono">
+                                {stats.firstCallText}
+                            </div>
+                        </div>
+
+                        {/* Last Call (7-22) */}
+                        <div>
+                            <div className="text-xs text-gray-400 mb-1 flex items-center space-x-1">
+                                <span className="text-purple-500">🌇</span>
+                                <span>Last Call (7h-22h)</span>
+                            </div>
+                            <div className="text-3xl text-white font-medium font-mono">
+                                {stats.lastCallText}
                             </div>
                         </div>
 
