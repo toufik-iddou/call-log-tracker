@@ -454,7 +454,7 @@ export default function Home() {
                   <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Agent</th>
                   <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Phone Number</th>
                   <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Type</th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Duration</th>
+                  <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Durations</th>
                 </tr>
               </thead>
               <tbody className="bg-gray-900 divide-y divide-gray-800">
@@ -484,8 +484,11 @@ export default function Home() {
                           {log.type}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        {formatDuration(log.duration)}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-purple-400">🔔 Ringing: {formatDuration(log.ringingDuration ?? 0)}</span>
+                          <span className="text-green-400">📞 Call: {formatDuration(log.duration)}</span>
+                        </div>
                       </td>
                     </tr>
                   ))

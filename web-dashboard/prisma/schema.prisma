@@ -22,9 +22,10 @@ model User {
 model CallLog {
   id          Int      @id @default(autoincrement())
   phoneNumber String
-  type        String   // "INCOMING", "OUTGOING", "MISSED", "REJECTED"
-  duration    Int      // duration in seconds
-  timestamp   DateTime
+  type             String   // "INCOMING", "OUTGOING", "MISSED", "REJECTED"
+  duration         Int      // actual talk duration in seconds
+  ringingDuration  Int      @default(0) // ringing time in seconds
+  timestamp        DateTime
   agentId     String
   agent       User     @relation(fields: [agentId], references: [id])
   createdAt   DateTime @default(now())

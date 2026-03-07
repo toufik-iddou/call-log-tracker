@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
         const validLogsData = [];
         for (const logItem of logsToProcess) {
-            const { phoneNumber, type, duration, timestamp } = logItem;
+            const { phoneNumber, type, duration, timestamp, ringingDuration } = logItem;
             if (!phoneNumber || !type || duration === undefined || !timestamp) {
                 return NextResponse.json(
                     { error: 'Missing required fields in one or more logs' },
@@ -46,6 +46,7 @@ export async function POST(request: Request) {
                 phoneNumber,
                 type,
                 duration: typeof duration === 'string' ? parseInt(duration, 10) : duration,
+                ringingDuration: typeof ringingDuration === 'string' ? parseInt(ringingDuration, 10) : (ringingDuration ?? 0),
                 timestamp: new Date(timestamp),
                 agentId: userId,
             });
@@ -79,9 +80,20 @@ export async function POST(request: Request) {
             });
             return NextResponse.json({ success: true, log }, { status: 201 });
         } else {
-            // Filter duplicates from batch
+            // 1st pass: deduplicate within the batch itself using a memory Set
+            const seen = new Set<string>();
+            const deduplicatedBatch = validLogsData.filter(log => {
+                // Round to nearest 10s to catch timestamp drift
+                const roundedTs = Math.round(log.timestamp.getTime() / 10000);
+                const key = `${log.phoneNumber}|${log.type}|${log.agentId}|${roundedTs}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+
+            // 2nd pass: filter duplicates that already exist in the DB
             const uniqueLogsToInsert = [];
-            for (const logItem of validLogsData) {
+            for (const logItem of deduplicatedBatch) {
                 const existingLog = await prisma.callLog.findFirst({
                     where: {
                         phoneNumber: logItem.phoneNumber,
