@@ -18,6 +18,15 @@ model User {
   createdAt DateTime  @default(now())
   lastSeen  DateTime  @default(now())
   callLogs  CallLog[]
+  sessions  AgentSession[]
+}
+
+model AgentSession {
+  id        String   @id @default(uuid())
+  agentId   String
+  agent     User     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  startTime DateTime @default(now())
+  endTime   DateTime @default(now())
 }
 
 model CallLog {

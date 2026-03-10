@@ -45,6 +45,9 @@ function DashboardContent() {
   const [addAgentStatus, setAddAgentStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [addAgentLoading, setAddAgentLoading] = useState(false);
 
+  // Agent Status Filter State
+  const [agentStatusFilter, setAgentStatusFilter] = useState<'ALL' | 'ONLINE' | 'OFFLINE'>('ALL');
+
   // Rename Agent State
   const [isRenamingAgent, setIsRenamingAgent] = useState(false);
   const [renamingAgentId, setRenamingAgentId] = useState('');
@@ -52,6 +55,12 @@ function DashboardContent() {
   const [renameAgentStatus, setRenameAgentStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [renameAgentLoading, setRenameAgentLoading] = useState(false);
   const [allAgents, setAllAgents] = useState<any[]>([]);
+
+  // Agent History Modal State
+  const [isViewingHistory, setIsViewingHistory] = useState(false);
+  const [historyAgent, setHistoryAgent] = useState<{ id: string, username: string } | null>(null);
+  const [historySessions, setHistorySessions] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Computed Derived Data for Filters (No longer doing client-side filtering)
   const filteredLogs = logs; // Keeping the name to minimize diff, but it's server-filtered now.
@@ -288,6 +297,36 @@ function DashboardContent() {
     }
   };
 
+  const handleOpenHistory = async (agentId: string, username: string) => {
+    setHistoryAgent({ id: agentId, username });
+    setIsViewingHistory(true);
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/sessions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setHistorySessions(data.sessions);
+      } else {
+        setHistorySessions([]);
+      }
+    } catch (err) {
+      console.error('Failed to load history', err);
+      setHistorySessions([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const calculateDuration = (start: string, end: string) => {
+    const diff = Math.max(0, new Date(end).getTime() - new Date(start).getTime());
+    const m = Math.floor(diff / 60000);
+    const h = Math.floor(m / 60);
+    if (h > 0) return `${h}h ${m % 60}m`;
+    return `${m}m`;
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('role');
@@ -418,21 +457,49 @@ function DashboardContent() {
           {/* Agent Status Area */}
           {role === 'ADMIN' && allAgents.length > 0 && (
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 shadow-sm mb-6">
-              <label className="flex items-center text-sm font-medium text-green-400 mb-4">
-                <span className="mr-2">🟢</span> Agent Status Insights
-              </label>
+              <div className="flex justify-between items-center mb-4">
+                <label className="flex items-center text-sm font-medium text-green-400">
+                  <span className="mr-2">🟢</span> Agent Status Insights
+                </label>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-400">Filter:</span>
+                  <select
+                    value={agentStatusFilter}
+                    onChange={(e) => setAgentStatusFilter(e.target.value as 'ALL' | 'ONLINE' | 'OFFLINE')}
+                    className="bg-gray-800 border border-gray-700 text-white text-sm rounded-md focus:ring-indigo-500 focus:border-indigo-500 p-1.5"
+                  >
+                    <option value="ALL">All Agents</option>
+                    <option value="ONLINE">Online 🟢</option>
+                    <option value="OFFLINE">Offline 🔘</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="flex flex-wrap gap-4">
-                {allAgents.map(agent => {
+                {allAgents.filter(agent => {
+                  if (agentStatusFilter === 'ALL') return true;
+                  const isOnline = agent.lastSeen && (new Date().getTime() - new Date(agent.lastSeen).getTime()) < 120000;
+                  if (agentStatusFilter === 'ONLINE') return isOnline;
+                  if (agentStatusFilter === 'OFFLINE') return !isOnline;
+                  return true;
+                }).map(agent => {
                   const isOnline = agent.lastSeen && (new Date().getTime() - new Date(agent.lastSeen).getTime()) < 120000;
                   return (
                     <div key={agent.id} className="flex items-center bg-gray-800 px-4 py-3 rounded-lg border border-gray-700 w-auto shadow-inner">
                       <span className={`h-3 w-3 rounded-full mr-3 shadow-sm ${isOnline ? 'bg-green-500 shadow-green-500/50' : 'bg-gray-500'}`}></span>
-                      <div className="flex flex-col">
+                      <div className="flex flex-col flex-1">
                         <span className="text-sm font-semibold text-gray-200">{agent.username}</span>
                         <span className="text-xs text-gray-500">
                           {isOnline ? 'Online' : 'Offline'}
                         </span>
                       </div>
+                      <button
+                        onClick={() => handleOpenHistory(agent.id, agent.username)}
+                        className="ml-3 p-1 text-gray-400 hover:text-indigo-400 hover:bg-gray-700 rounded-md transition-colors"
+                        title="View Session History"
+                      >
+                        🕒
+                      </button>
                     </div>
                   );
                 })}
@@ -798,6 +865,70 @@ function DashboardContent() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {isViewingHistory && historyAgent && (
+        <div className="fixed inset-0 bg-black/50 overflow-y-auto h-full w-full flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl shadow-2xl p-8 max-w-2xl w-full relative max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-white flex items-center">
+                <span className="mr-2">🕒</span> Agent Activity History: <span className="text-indigo-400 ml-2">{historyAgent.username}</span>
+              </h2>
+              <button
+                onClick={() => {
+                  setIsViewingHistory(false);
+                  setHistoryAgent(null);
+                }}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-2">
+              {historyLoading ? (
+                <div className="text-center py-12 text-gray-400">Loading history...</div>
+              ) : historySessions.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">No session history found for this agent.</div>
+              ) : (
+                <div className="space-y-3">
+                  {historySessions.map((session) => (
+                    <div key={session.id} className="bg-gray-800 border border-gray-700 rounded-lg p-4 flex flex-col sm:flex-row justify-between sm:items-center">
+                      <div className="flex flex-col mb-2 sm:mb-0">
+                        <span className="text-sm font-medium text-gray-300">
+                          {new Date(session.startTime).toLocaleDateString()}
+                        </span>
+                        <div className="text-sm text-gray-400 mt-1">
+                          <span className="text-green-400">{new Date(session.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="mx-2">➔</span>
+                          <span className="text-amber-500">{new Date(session.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      </div>
+                      <div className="bg-gray-900 px-3 py-1.5 rounded text-indigo-300 font-mono text-sm border border-gray-800">
+                        Duration: {calculateDuration(session.startTime, session.endTime)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="pt-6 mt-2 border-t border-gray-800 flex justify-end">
+              <button
+                onClick={() => {
+                  setIsViewingHistory(false);
+                  setHistoryAgent(null);
+                }}
+                className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-md text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
