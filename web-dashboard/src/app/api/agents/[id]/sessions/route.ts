@@ -4,7 +4,7 @@ import { verifyToken } from '@/lib/auth';
 
 export async function GET(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const authHeader = request.headers.get('Authorization');
@@ -19,7 +19,7 @@ export async function GET(
             return NextResponse.json({ error: 'Forbidden: Admins only' }, { status: 403 });
         }
 
-        const agentId = params.id;
+        const { id: agentId } = await params;
 
         const sessions = await prisma.agentSession.findMany({
             where: { agentId },
