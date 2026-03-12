@@ -24,10 +24,13 @@ function DashboardContent() {
   // Filters State
   const defaultStartDate = useMemo(() => {
     const d = new Date();
-    d.setDate(d.getDate() - 1); // default to last 24h
     return d.toISOString().split('T')[0];
   }, []);
-  const defaultEndDate = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const defaultEndDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1); // default to tomorrow
+    return d.toISOString().split('T')[0];
+  }, []);
 
   const [selectedAgent, setSelectedAgent] = useState<string>(searchParams.get('agentId') || '');
   const [phoneNumber, setPhoneNumber] = useState<string>(searchParams.get('phoneNumber') || '');
@@ -62,7 +65,7 @@ function DashboardContent() {
   const [historySessions, setHistorySessions] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // Computed Derived Data for Filters (No longer doing client-side filtering)
+  // Rename Agent State
   const filteredLogs = logs; // Keeping the name to minimize diff, but it's server-filtered now.
 
   const updateUrlParams = (newParams: Record<string, string>) => {
