@@ -152,7 +152,7 @@ class MainActivity : ComponentActivity() {
 fun SetupScreen(context: MainActivity) {
     val prefs = context.getSharedPreferences("CallMonitorPrefs", Context.MODE_PRIVATE)
     
-    val serverUrl = "https://call-log-tracker.vercel.app"
+    var serverUrl by remember { mutableStateOf(prefs.getString("serverUrl", "https://call-log-tracker.vercel.app") ?: "https://call-log-tracker.vercel.app") }
     var username by remember { mutableStateOf(prefs.getString("username", "") ?: "") }
     var password by remember { mutableStateOf("") }
     var isLoggedOut by remember { mutableStateOf(prefs.getString("token", "").isNullOrEmpty()) }
@@ -218,37 +218,17 @@ fun SetupScreen(context: MainActivity) {
     // Update notification on first render and whenever isLoggedOut changes
     LaunchedEffect(isLoggedOut, username) {
         context.updateAuthNotification(isLoggedOut, username)
-    }
-
-    // Ping server every 60 seconds while logged in to maintain 'Online' status
-    LaunchedEffect(isLoggedOut) {
         if (!isLoggedOut) {
-            while (true) {
-                val currentToken = prefs.getString("token", "") ?: ""
-                val currentServerUrl = prefs.getString("serverUrl", "") ?: "https://call-log-tracker.vercel.app"
-                if (currentToken.isNotEmpty()) {
-                    withContext(Dispatchers.IO) {
-                        try {
-                            val client = OkHttpClient()
-                            val jsonMediaType = "application/json; charset=utf-8".toMediaType()
-                            val body = "{}".toRequestBody(jsonMediaType)
-                            val request = Request.Builder()
-                                .url("$currentServerUrl/api/agent/ping")
-                                .header("Authorization", "Bearer $currentToken")
-                                .post(body)
-                                .build()
-                            client.newCall(request).execute().use { response -> 
-                                // response consumed and auto-closed by 'use' block
-                            }
-                        } catch (e: Exception) {
-                            // ignore connectivity issues for ping
-                        }
-                    }
-                }
-                delay(60_000)
+            val serviceIntent = Intent(context, HeartbeatService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
             }
         }
     }
+
+    // Removed old ping loop: logic moved to HeartbeatService
 
     Column(
         modifier = Modifier
@@ -260,6 +240,17 @@ fun SetupScreen(context: MainActivity) {
             text = "Call Center Monitor Setup",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 24.dp)
+        )
+
+        OutlinedTextField(
+            value = serverUrl,
+            onValueChange = { serverUrl = it },
+            label = { Text("Server URL") },
+            placeholder = { Text("https://your-api.com") },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
         )
 
         OutlinedTextField(
@@ -365,6 +356,7 @@ fun DashboardScreen(context: MainActivity, prefs: android.content.SharedPreferen
                         } catch (e: Exception) {
                             // Proceed with local logout even if server call fails
                         }
+                        context.stopService(Intent(context, HeartbeatService::class.java))
                         withContext(Dispatchers.Main) {
                             prefs.edit().remove("token").apply()
                             (context as? MainActivity)?.updateAuthNotification(true, "")

@@ -20,7 +20,7 @@ object ApiService {
     fun pushCallLogBatch(context: Context, logs: List<com.example.callcentermonitor.data.CallLogEntity>): Boolean {
         try {
             val prefs = context.getSharedPreferences("CallMonitorPrefs", Context.MODE_PRIVATE)
-            val serverUrl = "https://call-log-tracker.vercel.app"
+            val serverUrl = prefs.getString("serverUrl", "https://call-log-tracker.vercel.app") ?: "https://call-log-tracker.vercel.app"
             val activeToken = prefs.getString("token", "")
 
             if (serverUrl.isNullOrEmpty()) {
@@ -77,6 +77,32 @@ object ApiService {
             return allSuccess
         } catch (e: Exception) {
             Log.e("ApiService", "Exception inside pushCallLogBatch: ${e.message}", e)
+            return false
+        }
+    }
+
+    fun sendHeartbeat(context: Context): Boolean {
+        try {
+            val prefs = context.getSharedPreferences("CallMonitorPrefs", Context.MODE_PRIVATE)
+            val serverUrl = prefs.getString("serverUrl", "https://call-log-tracker.vercel.app") ?: "https://call-log-tracker.vercel.app"
+            val activeToken = prefs.getString("token", "")
+
+            if (activeToken.isNullOrEmpty()) {
+                return false
+            }
+
+            val request = okhttp3.Request.Builder()
+                .url("$serverUrl/api/agents/heartbeat")
+                .header("Authorization", "Bearer $activeToken")
+                .post("{}".toRequestBody(JSON))
+                .build()
+
+            val response = client.newCall(request).execute()
+            val isSuccess = response.isSuccessful
+            response.close()
+            return isSuccess
+        } catch (e: Exception) {
+            Log.e("ApiService", "Heartbeat error: ${e.message}")
             return false
         }
     }
